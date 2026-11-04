@@ -1,0 +1,112 @@
+[
+    {
+    "id": 1,
+    "author": "Chinua Achebe",
+    "country": "Nigeria",
+    "imageLink": "images/things-fall-apart.jpg",
+    "language": "English",
+    "link": "https://en.wikipedia.org/wiki/Things_Fall_Apart\n",
+    "pages": 209,
+    "title": "Things Fall Apart",
+    "year": 1958
+  },
+  {
+    "id": 2,
+    "author": "Hans Christian Andersen",
+    "country": "Denmark",
+    "imageLink": "images/fairy-tales.jpg",
+    "language": "Danish",
+    "link": "https://en.wikipedia.org/wiki/Fairy_Tales_Told_for_Children._First_Collection.\n",
+    "pages": 784,
+    "title": "Fairy tales",
+    "year": 1836
+  },
+  {
+    "id": 3,
+    "author": "Débora Melo",
+    "country": "Spain",
+    "imageLink": "images/croquetas-en-bucle-infinito.jpg",
+    "language": "Spanish",
+    "link": "https://example.com/books/croquetas-en-bucle-infinito",
+    "pages": 256,
+    "title": "Croquetas en bucle infinito",
+    "year": 2004
+  },
+  {
+    "id": 4,
+    "author": "Aitor Tilla",
+    "country": "Spain",
+    "imageLink": "images/paella-con-null-pointer.jpg",
+    "language": "Spanish",
+    "link": "https://example.com/books/paella-con-null-pointer",
+    "pages": 404,
+    "title": "Paella con null pointer",
+    "year": 1999
+  },
+  {
+    "id": 5,
+    "author": "Susana Oria",
+    "country": "Spain",
+    "imageLink": "images/recursividad-a-la-carbonara.jpg",
+    "language": "Spanish",
+    "link": "https://example.com/books/recursividad-a-la-carbonara",
+    "pages": 128,
+    "title": "Recursividad a la carbonara",
+    "year": 2017
+  },
+  {
+    "id": 6,
+    "author": "Ana Lista",
+    "country": "Spain",
+    "imageLink": "images/el-misterio-del-punto-y-coma-perdido.jpg",
+    "language": "Spanish",
+    "link": "https://example.com/books/el-misterio-del-punto-y-coma-perdido",
+    "pages": 312,
+    "title": "El misterio del punto y coma perdido",
+    "year": 2011
+  },
+  {
+    "id": 7,
+    "author": "Armando Bronca",
+    "country": "Spain",
+    "imageLink": "images/tortilla-de-patatas-con-merge-conflicts.jpg",
+    "language": "Spanish",
+    "link": "https://example.com/books/tortilla-de-patatas-con-merge-conflicts",
+    "pages": 187,
+    "title": "Tortilla de patatas con merge conflicts",
+    "year": 2019
+  },
+  {
+    "id": 8,
+    "author": "Elena Nito",
+    "country": "Spain",
+    "imageLink": "images/gazpacho-en-la-nube-escalado-horizontal-del-pepino.jpg",
+    "language": "Spanish",
+    "link": "https://example.com/books/gazpacho-en-la-nube-escalado-horizontal-del-pepino",
+    "pages": 99,
+    "title": "Gazpacho en la nube: escalado horizontal del pepino",
+    "year": 2023
+  },
+  {
+    "id": 9,
+    "author": "Lola Mento",
+    "country": "Spain",
+    "imageLink": "images/promesas-sin-resolver-y-churros-sin-chocolate.jpg",
+    "language": "Spanish",
+    "link": "https://example.com/books/promesas-sin-resolver-y-churros-sin-chocolate",
+    "pages": 500,
+    "title": "Promesas sin resolver y churros sin chocolate",
+    "year": 2015
+  },
+  {
+    "id": 10,
+    "author": "Rosa Melano",
+    "country": "Spain",
+    "imageLink": "images/undefined-a-la-plancha.jpg",
+    "language": "Spanish",
+    "link": "https://example.com/books/undefined-a-la-plancha",
+    "pages": 42,
+    "title": "Undefined a la plancha",
+    "year": 1997
+  }
+]
