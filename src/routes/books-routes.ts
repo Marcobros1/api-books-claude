@@ -1,14 +1,14 @@
 import { Router } from "express";
-import booksData from "../data/books.json";
-
-// Un libro del JSON (el tipo de un elemento del array)
-type Book = (typeof booksData)[number];
+import type { Response } from "express";
+import type { Book, BookData, BooksStorage } from "../services/books-storage";
+import { BooksStorageInMemory } from "../services/books-storage-in-memory";
 
 // Parámetros de la URL; `unknown` obliga a comprobar el valor antes de usarlo
 type Query = Record<string, unknown>;
 
-// Lista de libros en memoria (los cambios se pierden al reiniciar el servidor)
-const books: Book[] = [...booksData];
+// Las rutas no tocan los datos directamente: siempre a través del contrato BooksStorage.
+// Para cambiar de almacenamiento (p. ej. MongoDB), solo hay que cambiar esta línea.
+const storage: BooksStorage = new BooksStorageInMemory();
 
 // Campos de texto: obligatorios al crear o sustituir un libro, opcionales al modificarlo (PATCH)
 const TEXT_FIELDS = ["author", "country", "imageLink", "language", "link", "title"] as const;
@@ -28,8 +28,9 @@ const router = Router();
  *
  * Ejemplo: /api/books?country=chi&pages_gte=200&limit=5
  */
-router.get("/", (req, res) => {
+router.get("/", async (req, res) => {
   const query: Query = req.query;
+  const books = await storage.findAll();
 
   const filteredBooks = books.filter((book) => matchesAllFilters(book, query));
 
@@ -44,7 +45,7 @@ router.get("/", (req, res) => {
  *
  * Ejemplo: /api/books/1
  */
-router.get("/:id", (req, res) => {
+router.get("/:id", async (req, res) => {
   const id = parseId(req.params.id);
 
   if (id === undefined) {
@@ -52,10 +53,10 @@ router.get("/:id", (req, res) => {
     return;
   }
 
-  const book = books.find((book) => book.id === id);
+  const book = await storage.findById(id);
 
   if (!book) {
-    res.status(404).json({ error: `No existe ningún libro con id ${id}` });
+    sendNotFound(res, id);
     return;
   }
 
@@ -65,13 +66,12 @@ router.get("/:id", (req, res) => {
 /**
  * POST /api/books
  *
- * Crea un libro. El id se asigna solo: mayor id existente + 1.
- * Ojo: si se borra el libro con el mayor id, ese id se vuelve a usar en el siguiente POST.
+ * Crea un libro. El id lo asigna el almacenamiento (ver BooksStorageInMemory.create).
  * 400 con un error por cada campo no válido.
  *
  * Body: { author, country, imageLink, language, link, title, pages, year }
  */
-router.post("/", (req, res) => {
+router.post("/", async (req, res) => {
   const body: Query = req.body ?? {};
   const errors = validateBook(body);
 
@@ -80,11 +80,8 @@ router.post("/", (req, res) => {
     return;
   }
 
-  // Mayor id + 1 (no books.length + 1): así no se repiten ids si hay huecos
-  const nextId = Math.max(0, ...books.map((book) => book.id)) + 1;
-  const newBook: Book = { id: nextId, ...toBookData(body) };
+  const newBook = await storage.create(toBookData(body));
 
-  books.push(newBook);
   res.status(201).json(newBook);
 });
 
@@ -97,7 +94,7 @@ router.post("/", (req, res) => {
  *
  * Body: { author, country, imageLink, language, link, title, pages, year }
  */
-router.put("/:id", (req, res) => {
+router.put("/:id", async (req, res) => {
   const id = parseId(req.params.id);
 
   if (id === undefined) {
@@ -105,10 +102,9 @@ router.put("/:id", (req, res) => {
     return;
   }
 
-  const index = books.findIndex((book) => book.id === id);
-
-  if (index === -1) {
-    res.status(404).json({ error: `No existe ningún libro con id ${id}` });
+  // Se comprueba antes de validar el body: un id inexistente da 404 aunque el body sea inválido
+  if (!(await storage.findById(id))) {
+    sendNotFound(res, id);
     return;
   }
 
@@ -120,9 +116,14 @@ router.put("/:id", (req, res) => {
     return;
   }
 
-  const updatedBook: Book = { id, ...toBookData(body) };
+  const updatedBook = await storage.replace(id, toBookData(body));
 
-  books[index] = updatedBook;
+  // Por si se borró entre la comprobación y la escritura (posible con una base de datos)
+  if (!updatedBook) {
+    sendNotFound(res, id);
+    return;
+  }
+
   res.json(updatedBook);
 });
 
@@ -139,7 +140,7 @@ router.put("/:id", (req, res) => {
  *
  * Ejemplo: PATCH /api/books/1  { "pages": 210 }
  */
-router.patch("/:id", (req, res) => {
+router.patch("/:id", async (req, res) => {
   const id = parseId(req.params.id);
 
   if (id === undefined) {
@@ -147,10 +148,9 @@ router.patch("/:id", (req, res) => {
     return;
   }
 
-  const index = books.findIndex((book) => book.id === id);
-
-  if (index === -1) {
-    res.status(404).json({ error: `No existe ningún libro con id ${id}` });
+  // Se comprueba antes de validar el body: un id inexistente da 404 aunque el body sea inválido
+  if (!(await storage.findById(id))) {
+    sendNotFound(res, id);
     return;
   }
 
@@ -170,9 +170,13 @@ router.patch("/:id", (req, res) => {
     return;
   }
 
-  const patchedBook: Book = { ...books[index], ...toPartialBookData(body), id };
+  const patchedBook = await storage.update(id, toPartialBookData(body));
 
-  books[index] = patchedBook;
+  if (!patchedBook) {
+    sendNotFound(res, id);
+    return;
+  }
+
   res.json(patchedBook);
 });
 
@@ -184,7 +188,7 @@ router.patch("/:id", (req, res) => {
  *
  * Ejemplo: DELETE /api/books/1
  */
-router.delete("/:id", (req, res) => {
+router.delete("/:id", async (req, res) => {
   const id = parseId(req.params.id);
 
   if (id === undefined) {
@@ -192,16 +196,20 @@ router.delete("/:id", (req, res) => {
     return;
   }
 
-  const index = books.findIndex((book) => book.id === id);
+  const deletedBook = await storage.remove(id);
 
-  if (index === -1) {
-    res.status(404).json({ error: `No existe ningún libro con id ${id}` });
+  if (!deletedBook) {
+    sendNotFound(res, id);
     return;
   }
 
-  const [deletedBook] = books.splice(index, 1);
   res.json(deletedBook);
 });
+
+// Respuesta 404 común a todas las rutas con :id
+function sendNotFound(res: Response, id: number): void {
+  res.status(404).json({ error: `No existe ningún libro con id ${id}` });
+}
 
 /**
  * Devuelve un error por cada campo no válido (vacío si todo está bien).
@@ -243,7 +251,7 @@ function validateBook(body: Query, { partial = false } = {}): Record<string, str
 }
 
 // Construye los datos del libro (sin id) a partir de un body ya validado
-function toBookData(body: Query): Omit<Book, "id"> {
+function toBookData(body: Query): BookData {
   return {
     // Se guarda recortado, igual que se valida
     author: (body.author as string).trim(),
@@ -264,8 +272,8 @@ function toBookData(body: Query): Omit<Book, "id"> {
  * @param body - Body ya validado con `validateBook(body, { partial: true })`.
  * @returns Los campos enviados, listos para mezclarlos con el libro existente.
  */
-function toPartialBookData(body: Query): Partial<Omit<Book, "id">> {
-  const data: Partial<Omit<Book, "id">> = {};
+function toPartialBookData(body: Query): Partial<BookData> {
+  const data: Partial<BookData> = {};
 
   for (const field of TEXT_FIELDS) {
     if (body[field] !== undefined) data[field] = (body[field] as string).trim();
