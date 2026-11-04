@@ -10,8 +10,11 @@ type Query = Record<string, unknown>;
 // Lista de libros en memoria (los cambios se pierden al reiniciar el servidor)
 const books: Book[] = [...booksData];
 
-// Campos de texto obligatorios al crear o sustituir un libro
+// Campos de texto: obligatorios al crear o sustituir un libro, opcionales al modificarlo (PATCH)
 const TEXT_FIELDS = ["author", "country", "imageLink", "language", "link", "title"] as const;
+
+// Todos los campos que se pueden editar (el id nunca)
+const EDITABLE_FIELDS = [...TEXT_FIELDS, "pages", "year"] as const;
 
 const router = Router();
 
@@ -63,6 +66,7 @@ router.get("/:id", (req, res) => {
  * POST /api/books
  *
  * Crea un libro. El id se asigna solo: mayor id existente + 1.
+ * Ojo: si se borra el libro con el mayor id, ese id se vuelve a usar en el siguiente POST.
  * 400 con un error por cada campo no válido.
  *
  * Body: { author, country, imageLink, language, link, title, pages, year }
@@ -122,23 +126,116 @@ router.put("/:id", (req, res) => {
   res.json(updatedBook);
 });
 
-// Devuelve un error por cada campo no válido (vacío si todo está bien)
-function validateBook(body: Query): Record<string, string> {
+/**
+ * PATCH /api/books/:id
+ *
+ * Modifica solo los campos que se envían; el resto del libro no cambia.
+ * Cada campo enviado se valida con las mismas reglas que en POST y PUT.
+ * El id de la URL manda: si el body trae un id, se ignora. Los campos desconocidos también se ignoran.
+ * 400 si el id no es un número entero, no se envía ningún campo editable o alguno no es válido.
+ * 404 si no existe.
+ *
+ * Body (todos opcionales, al menos uno): { author, country, imageLink, language, link, title, pages, year }
+ *
+ * Ejemplo: PATCH /api/books/1  { "pages": 210 }
+ */
+router.patch("/:id", (req, res) => {
+  const id = parseId(req.params.id);
+
+  if (id === undefined) {
+    res.status(400).json({ error: "El id debe ser un número entero" });
+    return;
+  }
+
+  const index = books.findIndex((book) => book.id === id);
+
+  if (index === -1) {
+    res.status(404).json({ error: `No existe ningún libro con id ${id}` });
+    return;
+  }
+
+  const body: Query = req.body ?? {};
+
+  if (!EDITABLE_FIELDS.some((field) => body[field] !== undefined)) {
+    res.status(400).json({
+      error: `Hay que enviar al menos un campo: ${EDITABLE_FIELDS.join(", ")}`,
+    });
+    return;
+  }
+
+  const errors = validateBook(body, { partial: true });
+
+  if (Object.keys(errors).length > 0) {
+    res.status(400).json({ errors });
+    return;
+  }
+
+  const patchedBook: Book = { ...books[index], ...toPartialBookData(body), id };
+
+  books[index] = patchedBook;
+  res.json(patchedBook);
+});
+
+/**
+ * DELETE /api/books/:id
+ *
+ * Borra el libro con ese id y lo devuelve en la respuesta (200).
+ * 400 si el id no es un número entero, 404 si no existe.
+ *
+ * Ejemplo: DELETE /api/books/1
+ */
+router.delete("/:id", (req, res) => {
+  const id = parseId(req.params.id);
+
+  if (id === undefined) {
+    res.status(400).json({ error: "El id debe ser un número entero" });
+    return;
+  }
+
+  const index = books.findIndex((book) => book.id === id);
+
+  if (index === -1) {
+    res.status(404).json({ error: `No existe ningún libro con id ${id}` });
+    return;
+  }
+
+  const [deletedBook] = books.splice(index, 1);
+  res.json(deletedBook);
+});
+
+/**
+ * Devuelve un error por cada campo no válido (vacío si todo está bien).
+ *
+ * @param body - Body de la petición, sin validar.
+ * @param options.partial - Si es true (PATCH), los campos ausentes no se validan;
+ *   si es false (POST y PUT), todos son obligatorios.
+ * @returns Un objeto campo -> mensaje de error.
+ */
+function validateBook(body: Query, { partial = false } = {}): Record<string, string> {
   const errors: Record<string, string> = {};
 
+  // En PATCH solo se valida lo que llega
+  const shouldCheck = (field: string) => !partial || body[field] !== undefined;
+
   for (const field of TEXT_FIELDS) {
-    if (typeof body[field] !== "string" || body[field].trim() === "") {
+    if (!shouldCheck(field)) continue;
+
+    const value = body[field];
+    if (typeof value !== "string" || value.trim() === "") {
       errors[field] = "Debe ser un texto no vacío";
     }
   }
 
   // isSafeInteger rechaza valores enormes como 1e300 (isInteger los aceptaría)
-  if (!Number.isSafeInteger(body.pages) || (body.pages as number) <= 0) {
+  if (shouldCheck("pages") && (!Number.isSafeInteger(body.pages) || (body.pages as number) <= 0)) {
     errors.pages = "Debe ser un número entero mayor que 0";
   }
 
   // Los años negativos están permitidos (a. C.), los futuros no
-  if (!Number.isSafeInteger(body.year) || (body.year as number) > new Date().getFullYear()) {
+  if (
+    shouldCheck("year") &&
+    (!Number.isSafeInteger(body.year) || (body.year as number) > new Date().getFullYear())
+  ) {
     errors.year = "Debe ser un número entero no posterior al año actual";
   }
 
@@ -158,6 +255,26 @@ function toBookData(body: Query): Omit<Book, "id"> {
     pages: body.pages as number,
     year: body.year as number,
   };
+}
+
+/**
+ * Construye solo los campos que llegan en un body de PATCH ya validado.
+ * Los textos se guardan recortados, igual que en {@link toBookData}.
+ *
+ * @param body - Body ya validado con `validateBook(body, { partial: true })`.
+ * @returns Los campos enviados, listos para mezclarlos con el libro existente.
+ */
+function toPartialBookData(body: Query): Partial<Omit<Book, "id">> {
+  const data: Partial<Omit<Book, "id">> = {};
+
+  for (const field of TEXT_FIELDS) {
+    if (body[field] !== undefined) data[field] = (body[field] as string).trim();
+  }
+
+  if (body.pages !== undefined) data.pages = body.pages as number;
+  if (body.year !== undefined) data.year = body.year as number;
+
+  return data;
 }
 
 function matchesAllFilters(book: Book, query: Query): boolean {
