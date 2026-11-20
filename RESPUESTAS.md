@@ -1,15 +1,20 @@
 # RESPUESTAS.md
 
-## 1. ¿Cómo viaja un POST /api/books?
+## 1. POST /api/books
 
-1. `src/http/books-routes.ts`: la ruta `POST /` recibe el body y llama a `service.create(body)`. Solo hace de transporte HTTP y responde 201.
-2. `src/application/books-service.ts`: `BooksService.create` valida con `validateBook`. Si hay errores lanza `ValidationError`. Si está bien, hace `toBookData` y llama al repositorio.
-3. `src/domain/books-repository.ts`: es la interfaz `BooksRepository`. El servicio depende de esta y no sabe si es memoria o MongoDB.
-4. `src/infrastructure/books-repository-mongo.ts`: `BooksRepositoryMongo` implementa la interfaz. Crea el UUID, inserta en Mongo y devuelve el libro.
+Explica cómo viaja un `POST /api/books` por tu API, desde que llega la petición hasta que se guarda el libro. Para cada archivo por el que pasa, di qué hace y en qué capa está. Señala cuál es el puerto, cuáles son los adaptadores, y en qué línea se hace la inyección (copia la línea y explica qué hace).
 
-Puerto: `BooksRepository` en `src/domain/books-repository.ts`.  
-Adaptadores: `BooksRepositoryInMemory` y `BooksRepositoryMongo` en `src/infrastructure/`.  
-Inyección: en `src/index.ts` se elige el repositorio y se le pasa al servicio, y el servicio al router:
+La petición llega a `src/http/books-routes.ts`, que es la capa HTTP. La función `createBooksRouter(service)` recibe el servicio por parámetro y la ruta `POST /` solo le pasa el body y responde 201.
+
+Después va a `src/application/books-service.ts`, que es la capa de aplicación. `BooksService.create` valida el body con `validateBook`, transforma los datos con `toBookData` y llama al repositorio.
+
+Luego está `src/domain/books-repository.ts`, que es la capa de dominio. Ahí está el puerto: `export interface BooksRepository` con los métodos `create`, `findAll`, etc. El servicio depende de esta interfaz y no sabe si es memoria o MongoDB.
+
+Finalmente llega a `src/infrastructure/books-repository-mongo.ts`, que es la infraestructura. `BooksRepositoryMongo` implementa el puerto, genera el UUID, hace `insertOne` en Mongo y devuelve el libro creado.
+
+El puerto es `src/domain/books-repository.ts` (`export interface BooksRepository`).  
+Los adaptadores son `src/infrastructure/books-repository-in-memory.ts` y `src/infrastructure/books-repository-mongo.ts`.  
+La inyección está en `src/index.ts`, líneas 10 y 13:
 
 ```ts
 const repository: BooksRepository = new BooksRepositoryMongo();
@@ -17,24 +22,28 @@ const service = new BooksService(repository);
 app.use("/api/books", createBooksRouter(service));
 ```
 
-Cambiar solo esa primera línea pasa de Mongo a memoria sin tocar nada más.
+Cambiar solo la primera línea pasa de Mongo a memoria sin tocar rutas ni servicio.
 
 ---
 
-## 2. ¿PostgreSQL?
+## 2. Mañana, PostgreSQL
 
-Crearía `src/infrastructure/books-repository-postgres.ts` con una clase `BooksRepositoryPostgres implements BooksRepository` y los mismos métodos.
+El cliente quiere guardar los libros en PostgreSQL en vez de en MongoDB. Sin escribir el código, explica: qué archivo nuevo crearías y qué tendría que cumplir, qué archivo cambiarías y qué línea, qué archivos no tocarías, y por qué no hace falta tocarlos.
 
-En `src/index.ts` cambiaría la instancia por `new BooksRepositoryPostgres()` y añadiría el import.
+Crearía `src/infrastructure/books-repository-postgres.ts` con una clase `BooksRepositoryPostgres implements BooksRepository` y los mismos métodos que el resto de adaptadores.
 
-No tocaría `src/domain`, `src/application` ni `src/http` porque ya dependen del puerto, no de la base de datos.
+En `src/index.ts` cambiaría la instancia por `new BooksRepositoryPostgres()` y añadiría el import al principio del archivo.
+
+No tocaría `src/domain`, `src/application` ni `src/http` porque ya dependen del puerto `BooksRepository`, no de la base de datos concreta.
 
 ---
 
-## 3. Regla de las 2000 páginas
+## 3. Una regla nueva
 
-La pondría en `src/application/books-service.ts`, dentro de `validateBook`. Es regla de negocio, no de HTTP ni de repositorio.
+Nueva regla: "un libro no puede tener más de 2000 páginas". ¿En qué archivo la pondrías? ¿Por qué ahí y no en las rutas ni en el repositorio? ¿Qué respondería la API si alguien crea un libro de 3000 páginas? ¿Qué pieza decide ese código HTTP? ¿Funcionaría igual en memoria y en MongoDB? ¿Por qué?
 
-Si alguien envía 3000 páginas, `validateBook` pone el error en `errors.pages`, el servicio lanza `ValidationError` y el middleware de errores de `index.ts` devuelve 400 con el objeto de errores.
+La pondría en `src/application/books-service.ts`, dentro de `validateBook`. Es una regla de negocio, así que va en el servicio. Las rutas solo traducen HTTP y el repositorio solo guarda datos, ninguno de los dos debe conocer esa regla.
 
-Funciona igual en memoria y Mongo porque la validación ocurre antes de llamar al repositorio.
+Si alguien envía 3000 páginas, `validateBook` pone el error en `errors.pages`, el servicio lanza `ValidationError` y el middleware de errores de `src/index.ts` devuelve 400 con el objeto de errores. La pieza que decide el código HTTP es ese middleware, no el servicio ni las rutas.
+
+Funcionaría igual en memoria y Mongo porque la validación ocurre antes de llamar al repositorio. El servicio es el mismo para ambos adaptadores.
