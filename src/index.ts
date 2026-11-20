@@ -1,6 +1,13 @@
 import express from "express";
 import type { NextFunction, Request, Response } from "express";
-import booksRouter from "./routes/books-routes";
+import { createBooksRouter } from "./routes/books-routes";
+import type { BooksStorage } from "./services/books-storage";
+import { BooksStorageInMemory } from "./services/books-storage-in-memory";
+import { BooksStorageInNoSQL } from "./services/books-storage-in-nosql";
+
+// Para cambiar de memoria a MongoDB, cambia SOLO esta línea
+const storage: BooksStorage = new BooksStorageInNoSQL();
+// const storage: BooksStorage = new BooksStorageInMemory();
 
 const app = express();
 const PORT = 3000;
@@ -33,7 +40,7 @@ app.get("/", (_req, res) => {
   res.send("Mi API con Libros express");
 });
 
-app.use("/api/books", booksRouter);
+app.use("/api/books", createBooksRouter(storage));
 
 // 5. Ninguna ruta ha respondido: 404
 app.use((req, res) => {
