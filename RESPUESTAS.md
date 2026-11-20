@@ -1,6 +1,6 @@
 # RESPUESTAS.md
 
-## 1. POST /api/books
+## 1. ¿Cómo viaja un POST /api/books?
 
 1. `src/http/books-routes.ts`: la ruta `POST /` recibe el body y llama a `service.create(body)`. Solo hace de transporte HTTP y responde 201.
 2. `src/application/books-service.ts`: `BooksService.create` valida con `validateBook`. Si hay errores lanza `ValidationError`. Si está bien, hace `toBookData` y llama al repositorio.
