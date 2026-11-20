@@ -1,27 +1,9 @@
 import { Router } from "express";
 import type { Response } from "express";
 import { validate as validateUuid } from "uuid";
-import type { Book, BookData } from "../domain/book";
-import type { BooksRepository } from "../domain/books-repository";
+import type { BooksService } from "../application/books-service";
 
-// Parámetros de la URL; `unknown` obliga a comprobar el valor antes de usarlo
-type Query = Record<string, unknown>;
-
-// Campos de texto: obligatorios al crear o sustituir un libro, opcionales al modificarlo (PATCH)
-const TEXT_FIELDS = ["author", "country", "imageLink", "language", "link", "title"] as const;
-
-// Todos los campos que se pueden editar (el id nunca)
-const EDITABLE_FIELDS = [...TEXT_FIELDS, "pages", "year"] as const;
-
-/**
- * Crea el router de /api/books.
- *
- * Las rutas no crean ni eligen el repositorio: lo reciben por parámetro (inyección).
- * Para cambiar de memoria a MongoDB, se cambia en `index.ts`, no aquí.
- *
- * @param repository - Repositorio que cumple el contrato BooksRepository.
- */
-export function createBooksRouter(repository: BooksRepository): Router {
+export function createBooksRouter(service: BooksService): Router {
   const router = Router();
 
   /**
@@ -35,12 +17,8 @@ export function createBooksRouter(repository: BooksRepository): Router {
    * Ejemplo: /api/books?country=chi&pages_gte=200&limit=5
    */
   router.get("/", async (req, res) => {
-    const query: Query = req.query;
-    const books = await repository.findAll();
-
-    const filteredBooks = books.filter((book) => matchesAllFilters(book, query));
-
-    res.json(applyLimit(filteredBooks, query.limit));
+    const books = await service.list(req.query ?? {});
+    res.json(books);
   });
 
   /**
@@ -59,7 +37,7 @@ export function createBooksRouter(repository: BooksRepository): Router {
       return;
     }
 
-    const book = await repository.findById(id);
+    const book = await service.getById(id);
 
     if (!book) {
       sendNotFound(res, id);
@@ -72,22 +50,13 @@ export function createBooksRouter(repository: BooksRepository): Router {
   /**
    * POST /api/books
    *
-   * Crea un libro. El id lo asigna el almacenamiento (un UUID nuevo); si el body trae un id, se ignora.
+   * Crea un libro. El id lo asigna el repositorio (un UUID nuevo); si el body trae un id, se ignora.
    * 400 con un error por cada campo no válido.
    *
    * Body: { author, country, imageLink, language, link, title, pages, year }
    */
   router.post("/", async (req, res) => {
-    const body: Query = req.body ?? {};
-    const errors = validateBook(body);
-
-    if (Object.keys(errors).length > 0) {
-      res.status(400).json({ errors });
-      return;
-    }
-
-    const newBook = await repository.create(toBookData(body));
-
+    const newBook = await service.create(req.body ?? {});
     res.status(201).json(newBook);
   });
 
@@ -108,23 +77,8 @@ export function createBooksRouter(repository: BooksRepository): Router {
       return;
     }
 
-    // Se comprueba antes de validar el body: un id inexistente da 404 aunque el body sea inválido
-    if (!(await repository.findById(id))) {
-      sendNotFound(res, id);
-      return;
-    }
+    const updatedBook = await service.replace(id, req.body ?? {});
 
-    const body: Query = req.body ?? {};
-    const errors = validateBook(body);
-
-    if (Object.keys(errors).length > 0) {
-      res.status(400).json({ errors });
-      return;
-    }
-
-    const updatedBook = await repository.replace(id, toBookData(body));
-
-    // Por si se borró entre la comprobación y la escritura (posible con una base de datos)
     if (!updatedBook) {
       sendNotFound(res, id);
       return;
@@ -154,29 +108,7 @@ export function createBooksRouter(repository: BooksRepository): Router {
       return;
     }
 
-    // Se comprueba antes de validar el body: un id inexistente da 404 aunque el body sea inválido
-    if (!(await repository.findById(id))) {
-      sendNotFound(res, id);
-      return;
-    }
-
-    const body: Query = req.body ?? {};
-
-    if (!EDITABLE_FIELDS.some((field) => body[field] !== undefined)) {
-      res.status(400).json({
-        error: `Hay que enviar al menos un campo: ${EDITABLE_FIELDS.join(", ")}`,
-      });
-      return;
-    }
-
-    const errors = validateBook(body, { partial: true });
-
-    if (Object.keys(errors).length > 0) {
-      res.status(400).json({ errors });
-      return;
-    }
-
-    const patchedBook = await repository.update(id, toPartialBookData(body));
+    const patchedBook = await service.update(id, req.body ?? {});
 
     if (!patchedBook) {
       sendNotFound(res, id);
@@ -202,7 +134,7 @@ export function createBooksRouter(repository: BooksRepository): Router {
       return;
     }
 
-    const deletedBook = await repository.remove(id);
+    const deletedBook = await service.remove(id);
 
     if (!deletedBook) {
       sendNotFound(res, id);
@@ -218,133 +150,6 @@ export function createBooksRouter(repository: BooksRepository): Router {
 // Respuesta 404 común a todas las rutas con :id
 function sendNotFound(res: Response, id: string): void {
   res.status(404).json({ error: `No existe ningún libro con id ${id}` });
-}
-
-/**
- * Devuelve un error por cada campo no válido (vacío si todo está bien).
- *
- * @param body - Body de la petición, sin validar.
- * @param options.partial - Si es true (PATCH), los campos ausentes no se validan;
- *   si es false (POST y PUT), todos son obligatorios.
- * @returns Un objeto campo -> mensaje de error.
- */
-function validateBook(body: Query, { partial = false } = {}): Record<string, string> {
-  const errors: Record<string, string> = {};
-
-  // En PATCH solo se valida lo que llega
-  const shouldCheck = (field: string) => !partial || body[field] !== undefined;
-
-  for (const field of TEXT_FIELDS) {
-    if (!shouldCheck(field)) continue;
-
-    const value = body[field];
-    if (typeof value !== "string" || value.trim() === "") {
-      errors[field] = "Debe ser un texto no vacío";
-    }
-  }
-
-  // isSafeInteger rechaza valores enormes como 1e300 (isInteger los aceptaría)
-  if (shouldCheck("pages") && (!Number.isSafeInteger(body.pages) || (body.pages as number) <= 0)) {
-    errors.pages = "Debe ser un número entero mayor que 0";
-  }
-
-  // Los años negativos están permitidos (a. C.), los futuros no
-  if (
-    shouldCheck("year") &&
-    (!Number.isSafeInteger(body.year) || (body.year as number) > new Date().getFullYear())
-  ) {
-    errors.year = "Debe ser un número entero no posterior al año actual";
-  }
-
-  return errors;
-}
-
-// Construye los datos del libro (sin id) a partir de un body ya validado
-function toBookData(body: Query): BookData {
-  return {
-    // Se guarda recortado, igual que se valida
-    author: (body.author as string).trim(),
-    country: (body.country as string).trim(),
-    imageLink: (body.imageLink as string).trim(),
-    language: (body.language as string).trim(),
-    link: (body.link as string).trim(),
-    title: (body.title as string).trim(),
-    pages: body.pages as number,
-    year: body.year as number,
-  };
-}
-
-/**
- * Construye solo los campos que llegan en un body de PATCH ya validado.
- * Los textos se guardan recortados, igual que en {@link toBookData}.
- *
- * @param body - Body ya validado con `validateBook(body, { partial: true })`.
- * @returns Los campos enviados, listos para mezclarlos con el libro existente.
- */
-function toPartialBookData(body: Query): Partial<BookData> {
-  const data: Partial<BookData> = {};
-
-  for (const field of TEXT_FIELDS) {
-    if (body[field] !== undefined) data[field] = (body[field] as string).trim();
-  }
-
-  if (body.pages !== undefined) data.pages = body.pages as number;
-  if (body.year !== undefined) data.year = body.year as number;
-
-  return data;
-}
-
-function matchesAllFilters(book: Book, query: Query): boolean {
-  return (
-    matchesText(book.author, query.author) &&
-    matchesText(book.country, query.country) &&
-    matchesText(book.language, query.language) &&
-    matchesText(book.title, query.title) &&
-    matchesText(book.link, query.link) &&
-    matchesText(book.imageLink, query.imageLink) &&
-    matchesNumber(book.pages, query, "pages") &&
-    matchesNumber(book.year, query, "year")
-  );
-}
-
-// "China" coincide con "chi", "CHI", "ina"...
-function matchesText(bookValue: string, search: unknown): boolean {
-  if (typeof search !== "string") return true;
-
-  return bookValue.toLowerCase().includes(search.toLowerCase());
-}
-
-// Comprueba field, field_gt, field_gte, field_lt y field_lte
-function matchesNumber(bookValue: number, query: Query, field: string): boolean {
-  const equal = parseNumber(query[field]);
-  const greaterThan = parseNumber(query[`${field}_gt`]);
-  const greaterOrEqual = parseNumber(query[`${field}_gte`]);
-  const lessThan = parseNumber(query[`${field}_lt`]);
-  const lessOrEqual = parseNumber(query[`${field}_lte`]);
-
-  if (equal !== undefined && bookValue !== equal) return false;
-  if (greaterThan !== undefined && bookValue <= greaterThan) return false;
-  if (greaterOrEqual !== undefined && bookValue < greaterOrEqual) return false;
-  if (lessThan !== undefined && bookValue >= lessThan) return false;
-  if (lessOrEqual !== undefined && bookValue > lessOrEqual) return false;
-
-  return true;
-}
-
-function applyLimit(books: Book[], limitParam: unknown): Book[] {
-  const limit = parseNumber(limitParam);
-  if (limit === undefined || limit < 0) return books;
-
-  return books.slice(0, limit);
-}
-
-// Devuelve undefined si el parámetro no viene, está en blanco o no es un número finito
-// (Number(" ") sería 0 y Number("Infinity") sería Infinity)
-function parseNumber(value: unknown): number | undefined {
-  if (typeof value !== "string" || value.trim() === "") return undefined;
-
-  const number = Number(value);
-  return Number.isFinite(number) ? number : undefined;
 }
 
 // Solo acepta UUID válidos: rechaza "1", "abc", " 99d9de0b-..."
