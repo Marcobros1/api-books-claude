@@ -1,13 +1,16 @@
 import express from "express";
 import type { NextFunction, Request, Response } from "express";
-import { createBooksRouter } from "./routes/books-routes";
-import type { BooksStorage } from "./services/books-storage";
-import { BooksStorageInMemory } from "./services/books-storage-in-memory";
-import { BooksStorageInNoSQL } from "./services/books-storage-in-nosql";
+import { createBooksRouter } from "./http/books-routes";
+import { BooksService, ValidationError } from "./application/books-service";
+import type { BooksRepository } from "./domain/books-repository";
+import { BooksRepositoryInMemory } from "./infrastructure/books-repository-in-memory";
+import { BooksRepositoryMongo } from "./infrastructure/books-repository-mongo";
 
 // Para cambiar de memoria a MongoDB, cambia SOLO esta línea
-const storage: BooksStorage = new BooksStorageInNoSQL();
-// const storage: BooksStorage = new BooksStorageInMemory();
+const repository: BooksRepository = new BooksRepositoryMongo();
+// const repository: BooksRepository = new BooksRepositoryInMemory();
+
+const service = new BooksService(repository);
 
 const app = express();
 const PORT = 3000;
@@ -40,7 +43,7 @@ app.get("/", (_req, res) => {
   res.send("Mi API con Libros express");
 });
 
-app.use("/api/books", createBooksRouter(storage));
+app.use("/api/books", createBooksRouter(service));
 
 // 5. Ninguna ruta ha respondido: 404
 app.use((req, res) => {
@@ -51,6 +54,11 @@ app.use((req, res) => {
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof SyntaxError) {
     res.status(400).json({ error: "El body no es un JSON válido" });
+    return;
+  }
+
+  if (err instanceof ValidationError) {
+    res.status(400).json(err.errors ? { errors: err.errors } : { error: err.message });
     return;
   }
 
