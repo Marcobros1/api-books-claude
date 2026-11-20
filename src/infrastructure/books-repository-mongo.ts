@@ -1,6 +1,6 @@
 import { MongoClient, type Collection, type WithId } from "mongodb";
 import { v4 as uuidv4 } from "uuid";
-import type { Book, BookData, BooksStorage } from "./books-storage";
+import type { Book, BookData, BooksStorage } from "../domain/books-repository";
 
 /**
  * Un libro tal y como se guarda en MongoDB: el UUID es el propio `_id`

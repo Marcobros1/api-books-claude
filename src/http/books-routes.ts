@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { Response } from "express";
 import { validate as validateUuid } from "uuid";
-import type { Book, BookData, BooksStorage } from "../services/books-storage";
+import type { Book, BookData, BooksStorage } from "../domain/books-repository";
 
 // Parámetros de la URL; `unknown` obliga a comprobar el valor antes de usarlo
 type Query = Record<string, unknown>;

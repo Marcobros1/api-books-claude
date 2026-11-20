@@ -1,9 +1,9 @@
 import express from "express";
 import type { NextFunction, Request, Response } from "express";
-import { createBooksRouter } from "./routes/books-routes";
-import type { BooksStorage } from "./services/books-storage";
-import { BooksStorageInMemory } from "./services/books-storage-in-memory";
-import { BooksStorageInNoSQL } from "./services/books-storage-in-nosql";
+import { createBooksRouter } from "./http/books-routes";
+import type { BooksStorage } from "./domain/books-repository";
+import { BooksStorageInMemory } from "./infrastructure/books-repository-in-memory";
+import { BooksStorageInNoSQL } from "./infrastructure/books-repository-mongo";
 
 // Para cambiar de memoria a MongoDB, cambia SOLO esta línea
 const storage: BooksStorage = new BooksStorageInNoSQL();

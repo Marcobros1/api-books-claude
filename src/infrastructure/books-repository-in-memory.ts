@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
-import booksData from "../data/books.json";
-import type { Book, BookData, BooksStorage } from "./books-storage";
+import booksData from "./data/books.json";
+import type { Book, BookData, BooksStorage } from "../domain/books-repository";
 
 /**
  * Almacenamiento de libros en memoria.
