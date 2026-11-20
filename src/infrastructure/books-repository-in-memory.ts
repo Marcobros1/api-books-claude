@@ -1,14 +1,15 @@
 import { v4 as uuidv4 } from "uuid";
 import booksData from "./data/books.json";
-import type { Book, BookData, BooksStorage } from "../domain/books-repository";
+import type { Book, BookData } from "../domain/book";
+import type { BooksRepository } from "../domain/books-repository";
 
 /**
- * Almacenamiento de libros en memoria.
+ * Repositorio de libros en memoria.
  *
  * Arranca con los libros de `data/books.json`. Los cambios se pierden al
  * reiniciar el servidor.
  */
-export class BooksStorageInMemory implements BooksStorage {
+export class BooksRepositoryInMemory implements BooksRepository {
   private books: Book[] = [...booksData];
 
   async findAll(): Promise<Book[]> {

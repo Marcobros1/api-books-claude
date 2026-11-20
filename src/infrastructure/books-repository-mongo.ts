@@ -1,6 +1,7 @@
 import { MongoClient, type Collection, type WithId } from "mongodb";
 import { v4 as uuidv4 } from "uuid";
-import type { Book, BookData, BooksStorage } from "../domain/books-repository";
+import type { Book, BookData } from "../domain/book";
+import type { BooksRepository } from "../domain/books-repository";
 
 /**
  * Un libro tal y como se guarda en MongoDB: el UUID es el propio `_id`
@@ -16,7 +17,7 @@ const COLLECTION_NAME = "books";
  * Usa `MONGODB_URI` y `DB_NAME` del `.env` (los carga `npm run dev`).
  * La conexión se abre la primera vez que se necesita y se reutiliza.
  */
-export class BooksStorageInNoSQL implements BooksStorage {
+export class BooksRepositoryMongo implements BooksRepository {
   private readonly client: MongoClient;
   private readonly dbName: string;
   private connection?: Promise<MongoClient>;

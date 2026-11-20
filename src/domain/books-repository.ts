@@ -1,32 +1,16 @@
 /**
- * Contrato del almacenamiento de libros.
+ * Puerto del repositorio de libros.
  *
- * Las rutas solo conocen esta interfaz, no cómo se guardan los datos.
+ * Dice qué se puede hacer con los libros, no cómo se guardan.
  * Para cambiar de almacenamiento (por ejemplo, de memoria a MongoDB) basta con
- * escribir otra clase que implemente `BooksStorage`; las rutas no cambian.
+ * escribir otra clase que implemente `BooksRepository`; el servicio no cambia.
  *
  * Los métodos devuelven `Promise` aunque la versión en memoria no lo necesite:
  * así el contrato ya sirve para almacenamientos asíncronos como una base de datos.
  */
+import type { Book, BookData } from "./book";
 
-/** Un libro tal y como se guarda y se devuelve en la API. */
-export interface Book {
-  /** UUID asignado por el almacenamiento. */
-  id: string;
-  author: string;
-  country: string;
-  imageLink: string;
-  language: string;
-  link: string;
-  pages: number;
-  title: string;
-  year: number;
-}
-
-/** Los datos de un libro sin el id (lo asigna el almacenamiento). */
-export type BookData = Omit<Book, "id">;
-
-export interface BooksStorage {
+export interface BooksRepository {
   /** Devuelve todos los libros. */
   findAll(): Promise<Book[]>;
 

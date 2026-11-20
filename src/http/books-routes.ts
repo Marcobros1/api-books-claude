@@ -1,7 +1,8 @@
 import { Router } from "express";
 import type { Response } from "express";
 import { validate as validateUuid } from "uuid";
-import type { Book, BookData, BooksStorage } from "../domain/books-repository";
+import type { Book, BookData } from "../domain/book";
+import type { BooksRepository } from "../domain/books-repository";
 
 // Parámetros de la URL; `unknown` obliga a comprobar el valor antes de usarlo
 type Query = Record<string, unknown>;
@@ -15,12 +16,12 @@ const EDITABLE_FIELDS = [...TEXT_FIELDS, "pages", "year"] as const;
 /**
  * Crea el router de /api/books.
  *
- * Las rutas no crean ni eligen el almacenamiento: lo reciben por parámetro (inyección).
+ * Las rutas no crean ni eligen el repositorio: lo reciben por parámetro (inyección).
  * Para cambiar de memoria a MongoDB, se cambia en `index.ts`, no aquí.
  *
- * @param storage - Almacenamiento que cumple el contrato BooksStorage.
+ * @param repository - Repositorio que cumple el contrato BooksRepository.
  */
-export function createBooksRouter(storage: BooksStorage): Router {
+export function createBooksRouter(repository: BooksRepository): Router {
   const router = Router();
 
   /**
@@ -35,7 +36,7 @@ export function createBooksRouter(storage: BooksStorage): Router {
    */
   router.get("/", async (req, res) => {
     const query: Query = req.query;
-    const books = await storage.findAll();
+    const books = await repository.findAll();
 
     const filteredBooks = books.filter((book) => matchesAllFilters(book, query));
 
@@ -58,7 +59,7 @@ export function createBooksRouter(storage: BooksStorage): Router {
       return;
     }
 
-    const book = await storage.findById(id);
+    const book = await repository.findById(id);
 
     if (!book) {
       sendNotFound(res, id);
@@ -85,7 +86,7 @@ export function createBooksRouter(storage: BooksStorage): Router {
       return;
     }
 
-    const newBook = await storage.create(toBookData(body));
+    const newBook = await repository.create(toBookData(body));
 
     res.status(201).json(newBook);
   });
@@ -108,7 +109,7 @@ export function createBooksRouter(storage: BooksStorage): Router {
     }
 
     // Se comprueba antes de validar el body: un id inexistente da 404 aunque el body sea inválido
-    if (!(await storage.findById(id))) {
+    if (!(await repository.findById(id))) {
       sendNotFound(res, id);
       return;
     }
@@ -121,7 +122,7 @@ export function createBooksRouter(storage: BooksStorage): Router {
       return;
     }
 
-    const updatedBook = await storage.replace(id, toBookData(body));
+    const updatedBook = await repository.replace(id, toBookData(body));
 
     // Por si se borró entre la comprobación y la escritura (posible con una base de datos)
     if (!updatedBook) {
@@ -154,7 +155,7 @@ export function createBooksRouter(storage: BooksStorage): Router {
     }
 
     // Se comprueba antes de validar el body: un id inexistente da 404 aunque el body sea inválido
-    if (!(await storage.findById(id))) {
+    if (!(await repository.findById(id))) {
       sendNotFound(res, id);
       return;
     }
@@ -175,7 +176,7 @@ export function createBooksRouter(storage: BooksStorage): Router {
       return;
     }
 
-    const patchedBook = await storage.update(id, toPartialBookData(body));
+    const patchedBook = await repository.update(id, toPartialBookData(body));
 
     if (!patchedBook) {
       sendNotFound(res, id);
@@ -201,7 +202,7 @@ export function createBooksRouter(storage: BooksStorage): Router {
       return;
     }
 
-    const deletedBook = await storage.remove(id);
+    const deletedBook = await repository.remove(id);
 
     if (!deletedBook) {
       sendNotFound(res, id);
